@@ -17,16 +17,15 @@ input{width:100%;padding:12px;border:none;border-radius:8px;margin-bottom:15px}
 .card:hover{transform:scale(1.06)}
 .card img{width:100%;height:220px;object-fit:cover}
 .card h3{font-size:12px;margin:5px}
-button{background:#222;color:#fff;border:none;padding:8px;margin:5px;cursor:pointer;border-radius:5px}
-.main{background:#e50914}
 .hidden{display:none}
+button{background:#222;color:#fff;border:none;padding:8px;margin:5px;border-radius:5px;cursor:pointer}
+.main{background:#e50914}
 iframe{width:100%;height:400px;border:none}
-.fade{animation:fade .25s ease-in}
+.fade{animation:fade .3s ease-in}
 @keyframes fade{from{opacity:0}to{opacity:1}}
 
-.seasons, .episodes{margin-top:10px}
-select{padding:8px;border-radius:6px;background:#222;color:#fff;border:none}
-.episode{padding:10px;background:#1c1c1c;margin:5px 0;border-radius:8px;cursor:pointer}
+.season-select{padding:10px;background:#222;color:#fff;border:none;border-radius:6px;margin-top:10px}
+.episode{padding:10px;background:#1c1c1c;margin:5px 0;border-radius:6px;cursor:pointer}
 .episode:hover{background:#2a2a2a}
 </style>
 </head>
@@ -34,158 +33,143 @@ select{padding:8px;border-radius:6px;background:#222;color:#fff;border:none}
 
 <header>NovaStream</header>
 
-<!-- HOME -->
 <div id="home" class="container fade">
-<input type="text" placeholder="Pesquisar mais de 10.000 títulos..." onkeyup="search()" id="search">
+<input id="search" placeholder="Pesquisar filmes e séries..." onkeyup="search()">
 
 <div class="row">
-<h2>🔥 Populares</h2>
-<div class="scroll" id="popular"></div>
+<h2>🔥 Tendências</h2>
+<div class="scroll" id="trending"></div>
 </div>
 
 <div class="row">
-<h2>🎬 Ação</h2>
-<div class="scroll" id="acao"></div>
+<h2>🎬 Filmes</h2>
+<div class="scroll" id="movies"></div>
 </div>
 
 <div class="row">
-<h2>🎭 Drama</h2>
-<div class="scroll" id="drama"></div>
-</div>
-
-<div class="row">
-<h2>👻 Terror</h2>
-<div class="scroll" id="terror"></div>
-</div>
-
-<div class="row">
-<h2>⭐ Favoritos</h2>
-<div class="scroll" id="fav"></div>
+<h2>📺 Séries</h2>
+<div class="scroll" id="tv"></div>
 </div>
 </div>
 
 <!-- DETAILS -->
-<div id="details" class="hidden container fade">
+<div id="details" class="container hidden fade">
 <button onclick="back()">⬅ Voltar</button>
 <h2 id="title"></h2>
 <p id="desc"></p>
-
-<div id="series"></div>
-
-<button class="main" onclick="addFav()">⭐ Favorito</button>
-<button class="main" onclick="openTrailer()">▶ Trailer HD</button>
+<div id="content"></div>
+<button class="main" onclick="openTrailer()">▶ Trailer</button>
 </div>
 
 <!-- PLAYER -->
-<div id="player" class="hidden container fade">
+<div id="player" class="container hidden fade">
 <button onclick="closePlayer()">Fechar</button>
 <iframe id="video"></iframe>
 </div>
 
 <script>
 
-let data=[];
+const API_KEY = "COLOCA_AQUI_TUA_API_TMDB";
+const IMG = "https://image.tmdb.org/t/p/w500";
+
 let current=null;
-let favorites=JSON.parse(localStorage.getItem("fav")||"[]");
-let page=0;
+let currentType=null;
+let currentSeason=1;
 
-/* 🔥 CARREGAMENTO MASSIVO (10K+ ITENS VIA PAGINAÇÃO) */
-async function loadData(){
- let res=await fetch(`https://api.tvmaze.com/shows?page=${page}`);
- let json=await res.json();
+async function loadHome(){
 
- let mapped=json.map(x=>({
- name:x.name,
- img:x.image?.medium||"https://via.placeholder.com/300x450",
- genre:(x.genres[0]||"drama").toLowerCase(),
- id:x.id,
- type:x.type
- }));
+ let t = await fetch(`https://api.themoviedb.org/3/trending/all/week?api_key=${API_KEY}`);
+ let data = await t.json();
+ renderList("trending",data.results);
 
- data=data.concat(mapped);
- render();
- page++;
+ let m = await fetch(`https://api.themoviedb.org/3/discover/movie?api_key=${API_KEY}`);
+ let movies = await m.json();
+ renderList("movies",movies.results);
+
+ let tv = await fetch(`https://api.themoviedb.org/3/tv/popular?api_key=${API_KEY}`);
+ let series = await tv.json();
+ renderList("tv",series.results,true);
 }
 
-window.addEventListener("scroll",()=>{
- if(window.innerHeight+window.scrollY>=document.body.offsetHeight-500){
- loadData();
- }
-});
-
-function getTrailer(name){
- return `https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(name + " official trailer")}`;
-}
-
-function render(){
- renderRow("popular",data);
- renderRow("acao",data.filter(x=>x.genre.includes("action")));
- renderRow("drama",data.filter(x=>x.genre.includes("drama")));
- renderRow("terror",data.filter(x=>x.genre.includes("horror")));
- renderFav();
-}
-
-function renderRow(id,list){
+function renderList(id,list,isTV=false){
  let box=document.getElementById(id);
  box.innerHTML="";
- list.slice(0,40).forEach((item)=>{
+
+ list.forEach(item=>{
  box.innerHTML+=`
- <div class="card" onclick="openDetails(${data.indexOf(item)})">
- <img src="${item.img}">
- <h3>${item.name}</h3>
+ <div class="card" onclick="openDetails(${item.id},'${isTV?'tv':'movie'}')">
+ <img src="${IMG+item.poster_path}">
+ <h3>${item.title || item.name}</h3>
+ </div>`;
+ });
+}
+
+async function openDetails(id,type){
+ current=id;
+ currentType=type;
+
+ document.getElementById("home").classList.add("hidden");
+ document.getElementById("details").classList.remove("hidden");
+
+ let url=`https://api.themoviedb.org/3/${type}/${id}?api_key=${API_KEY}&append_to_response=videos`;
+ let res=await fetch(url);
+ let data=await res.json();
+
+ document.getElementById("title").innerText=data.title||data.name;
+ document.getElementById("desc").innerText=data.overview||"Sem descrição";
+
+ let html="";
+
+ // SERIES
+ if(type=="tv"){
+ let s = await fetch(`https://api.themoviedb.org/3/tv/${id}?api_key=${API_KEY}`);
+ let series = await s.json();
+
+ html+=`<select class='season-select' onchange='loadEpisodes(this.value)'>`;
+ series.seasons.forEach(s=>{
+ html+=`<option value='${s.season_number}'>Temporada ${s.season_number}</option>`;
+ });
+ html+=`</select><div id='episodes'></div>`;
+ }
+
+ document.getElementById("content").innerHTML=html;
+
+ if(type=="tv") loadEpisodes(1);
+}
+
+async function loadEpisodes(season){
+ currentSeason=season;
+ let res=await fetch(`https://api.themoviedb.org/3/tv/${current}/season/${season}?api_key=${API_KEY}`);
+ let data=await res.json();
+
+ let box=document.getElementById("episodes");
+ box.innerHTML="";
+
+ data.episodes.forEach(ep=>{
+ box.innerHTML+=`
+ <div class='episode' onclick="playTrailer('${ep.name}')">
+ Ep ${ep.episode_number} - ${ep.name}
  </div>`;
  });
 }
 
 function search(){
- let v=document.getElementById("search").value.toLowerCase();
- let f=data.filter(x=>x.name.toLowerCase().includes(v));
- renderRow("popular",f);
-}
+ let q=document.getElementById("search").value;
+ if(q.length<2) return;
 
-/* 📺 DETALHES + SÉRIES (TEMPORADAS REAIS) */
-async function openDetails(i){
- current=data[i];
- document.getElementById("home").classList.add("hidden");
- document.getElementById("details").classList.remove("hidden");
- document.getElementById("title").innerText=current.name;
- document.getElementById("desc").innerText="Carregando informações...";
- document.getElementById("series").innerHTML="";
-
- let seasonsRes=await fetch(`https://api.tvmaze.com/shows/${current.id}/seasons`);
- let seasons=await seasonsRes.json();
-
- let epRes=await fetch(`https://api.tvmaze.com/shows/${current.id}/episodes`);
- let episodes=await epRes.json();
-
- let html=`<div class='seasons'><h3>Temporadas</h3><select onchange='loadEpisodes(this.value,${JSON.stringify(episodes).replace(/"/g,"&quot;")})'>`;
- seasons.forEach((s,i)=>{
- html+=`<option value='${s.number}'>Temporada ${s.number}</option>`;
- });
- html+=`</select></div><div id='eps'></div>`;
-
- document.getElementById("series").innerHTML=html;
- document.getElementById("desc").innerText="Escolhe temporada para ver episódios";
-
- loadEpisodes(1,episodes);
-}
-
-function loadEpisodes(season,episodes){
- let box=document.getElementById("eps");
- box.innerHTML="";
-
- episodes.filter(e=>e.season==season).forEach(ep=>{
- box.innerHTML+=`
- <div class='episode' onclick="alert('Trailer do episódio será aberto')">
- Ep ${ep.number} - ${ep.name}
- </div>`;
- });
+ fetch(`https://api.themoviedb.org/3/search/multi?api_key=${API_KEY}&query=${q}`)
+ .then(r=>r.json())
+ .then(d=>renderList("trending",d.results));
 }
 
 function openTrailer(){
+ playTrailer("official trailer");
+}
+
+function playTrailer(name){
  document.getElementById("details").classList.add("hidden");
  document.getElementById("player").classList.remove("hidden");
- document.getElementById("video").src=getTrailer(current.name);
+ document.getElementById("video").src=`https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(name+' trailer')}`;
 }
 
 function closePlayer(){
@@ -193,30 +177,12 @@ function closePlayer(){
  document.getElementById("details").classList.remove("hidden");
 }
 
-function addFav(){
- favorites.push(current);
- localStorage.setItem("fav",JSON.stringify(favorites));
- renderFav();
-}
-
-function renderFav(){
- let box=document.getElementById("fav");
- box.innerHTML="";
- favorites.forEach(f=>{
- box.innerHTML+=`
- <div class="card" onclick="openDetails(${data.indexOf(f)})">
- <img src="${f.img}">
- <h3>${f.name}</h3>
- </div>`;
- });
-}
-
 function back(){
  document.getElementById("details").classList.add("hidden");
  document.getElementById("home").classList.remove("hidden");
 }
 
-loadData();
+loadHome();
 
 </script>
 
